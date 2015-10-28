@@ -46,9 +46,9 @@ function treatAccount(context){
 } 
 
 function formatCubeStatus(context){
+    var unixTimestamp= Date.now();
+
     return context.status.rooms.reduce(function(soFar, room){
-	var unixTimestamp= Date.now();
-	
 	return soFar
 	    .concat('\n')
 	    .concat(context.account.apt).concat(';')
