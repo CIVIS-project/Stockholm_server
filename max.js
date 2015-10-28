@@ -1,3 +1,5 @@
+/*global require s0 */
+
 var vm = require('vm');
 var fs = require('fs');
 var httpRequest=require('./httpRequest.js');
@@ -6,37 +8,59 @@ Q.longStackSupport = true;
 
 const file='./max-accounts.json';
 const fileOpts='utf-8';
-	  
+const replyDelay=1000;
+
 var accounts=JSON.parse(fs.readFileSync(file, fileOpts));
 
 httpRequest(readAPI)()
     .then(vm.runInThisContext)
     .then(httpRequest(getScriptSessionId))
-    .then(makeContext)
-    .invoke("map", treatAccount)
-    .all()
-    .tap(console.log)
+    .then(function(sessionId){
+	return accounts
+	    .map(function(a){ return {account:a, scriptSessionId:sessionId};})
+	    .map(function(ctx){ return function(){ return treatAccount(ctx);};})
+	    .reduce(Q.when, Q());
+    })
     .done();
 ;
-
-function makeContext(sessionId){
-    return accounts.map(function(a){
-	return {account:a, scriptSessionId:sessionId};
-    });
-}
 
 function treatAccount(context){
     return Q(context)
 	.then(httpRequest(getCookie))
     	.then(function(value){context.cookie=value; return context;})
 	.then(httpRequest(getCubeStatus))
+        .then(function(value){context.status=value; return context;})
 	.then(formatCubeStatus)
+	.then(function(formatted){ return formatted.split('\n');})
+	.then(function(strings){
+	    return strings
+		.map(function(s){
+		    return function(){
+			return Q(s).tap(console.log).then(httpRequest(logCubeRoom)).delay(replyDelay);
+		    };
+		}
+		    )
+		.reduce(Q.when, Q());
+	})
     ;
 } 
 
-function formatCubeStatus(maxCubeState){
-    // TODO
-    return maxCubeState.rooms[1].name;
+function formatCubeStatus(context){
+    return context.status.rooms.reduce(function(soFar, room){
+	var unixTimestamp= Date.now();
+	
+	return soFar
+	    .concat('\n')
+	    .concat(context.account.apt).concat(';')
+	    .concat(unixTimestamp).concat(';')
+	    .concat(context.status.serialNumber).concat(';')
+	    .concat(room.name).concat(';')
+	    .concat(room.comfortTemperature).concat(';')
+//	    .concat(room.ecoTemperature).concat(';')
+	    .concat(room.actualTemperature)
+	;
+	
+    }, "").substring(1);
 }
 
 function readAPI(){
@@ -99,10 +123,27 @@ function getCubeStatus(context){
 	},
 	postprocess:function(response){
 	    var responseScript=response.body.substring(response.body.indexOf("//#"));
-	    responseScript= responseScript.substring(0, responseScript.
-						     indexOf("dwr.engine._remoteHandleCallback"));    
+	    responseScript= responseScript
+		.substring(0, responseScript.indexOf("dwr.engine._remoteHandleCallback"));    
 	    vm.runInThisContext(responseScript);
 	    return s0;
 	}
+    };
+}
+
+function logCubeRoom(content){
+    return {
+	method:'post',
+	url:'http://civis.cloud.reply.eu/Sweden/DataParser.svc/postMaxCubeData',
+	headers: {
+	    'Content-Type': 'application/text' ,
+	    'Accept': 'text/plain',
+	    'Accept-Charset': 'utf-8'
+	},
+	body: content,
+	postprocess:function(response){
+	    // TODO
+	    console.log(response.body);
+	}	
     };
 }

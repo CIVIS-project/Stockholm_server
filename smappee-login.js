@@ -1,3 +1,4 @@
+/*global require*/
 var Q= require('q');
 var fs = require('fs');
 var httpRequest = require('./httpRequest.js');
@@ -9,9 +10,9 @@ const fileOpts='utf-8';
 	  
 var accounts=JSON.parse(fs.readFileSync(file, fileOpts));
 
-Q.invoke(accounts, "map", treatAccount)
-    .all()
-    .then(function(obj){return JSON.stringify(obj, null, 2);})
+accounts.map(function(a){  return function(){ return treatAccount(a);};})
+    .reduce(Q.when, Q())
+    .then(function(){return JSON.stringify(accounts, null, 2);})
     .then(function (string){
 	return Q.denodeify(fs.writeFile)(tokenFile, string, fileOpts);
     })

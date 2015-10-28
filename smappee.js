@@ -1,3 +1,5 @@
+/*global require */
+
 var Q= require('q');
 var fs = require('fs');
 var httpRequest = require('./httpRequest.js');
@@ -5,11 +7,14 @@ Q.longStackSupport = true;
 
 const tokenFile='./smappee-accounts-token.json';
 const fileOpts='utf-8';
+const replyDelay=1000;
 	  
 var accounts=JSON.parse(fs.readFileSync(tokenFile, fileOpts));
 
-Q.invoke(accounts, "map", treatAccount)
-    .all()
+accounts.map(function(a){  return function(){ return treatAccount(a);};})
+    .reduce(Q.when, Q())
+//Q.invoke(accounts, "map", treatAccount)
+//    .all()
     .done()
 ;
 
@@ -19,6 +24,7 @@ function treatAccount(account){
 	.then(function(value){account.cons=value;return account;})
 	.then(formatConsumption)
 	.tap(console.log)
+	.then(httpRequest(logConsumption)).delay(replyDelay)
     ;
 }
 
@@ -38,14 +44,16 @@ function getConsumption(account){
 }
 
 function formatConsumption(account){
-    return account.smapeeId+';'
+    return account.apt+';'
+	+account.smapeeId+';'
 	+(account.cons[0].timestamp-30000)+';'
 	+account.cons[2].timestamp+';'
 	+(account.cons[0].consumption+ account.cons[1].consumption+ account.cons[2].consumption);
 }
 
-function logOptions(content){
+function logConsumption(content){
     return {
+	method:'post',
 	url:'http://civis.cloud.reply.eu/Sweden/DataParser.svc/postSmappeeData',
 	headers: {
 	    'Content-Type': 'application/text' ,
