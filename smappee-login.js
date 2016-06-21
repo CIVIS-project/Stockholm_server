@@ -22,9 +22,12 @@ function treatAccount(account){
     return Q(account)
 	.then(httpRequest(getAccessToken))
 	.then(function(value){account.accessToken=value; return account;})
+    	.then(httpRequest(getServiceLocation))
+	.then(function(value){account.serviceLocationId=value; return account;})
 	.tap(console.log)
     ;
 }
+
 function getAccessToken(account){
     return  {
 	method:'post',
@@ -42,4 +45,16 @@ function getAccessToken(account){
     };
 }
 
+function getServiceLocation(account){
+    return  {
+	method:'get',
+	url:'https://app1pub.smappee.net/dev/v1/servicelocation',
+	auth: {
+	    'bearer': account.accessToken
+	},
+	postprocess:function(response){
+	    return JSON.parse(response.body).serviceLocations[0].serviceLocationId;
+	}
+    };
+}   
 	
