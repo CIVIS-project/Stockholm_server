@@ -1,16 +1,31 @@
 /*global require s0 */
 
 var vm = require('vm');
-var fs = require('fs');
+//var fs = require('fs');
 var httpRequest=require('./httpRequest.js');
 var Q=require("q");
 Q.longStackSupport = true;
 
-const file='./max-accounts.json';
-const fileOpts='utf-8';
-const replyDelay=1000;
+//const file='./max-accounts.json';
+//const fileOpts='utf-8';
 
-var accounts=JSON.parse(fs.readFileSync(file, fileOpts));
+var mysql      = require('mysql');
+var connection = mysql.createConnection({
+    host     : 'localhost',
+    user     : 'root',
+    password : '',
+    database:  'maxcube'
+});
+
+var query=Q.nbind(connection.query, connection);
+var accounts;
+//=JSON.parse(fs.readFileSync(file, fileOpts));
+
+Q('SELECT * from accounts')
+    .then(query)
+    .then(function(result){accounts=result[0];})
+    .done()
+;
 
 httpRequest(readAPI)()
     .then(vm.runInThisContext)
@@ -21,6 +36,7 @@ httpRequest(readAPI)()
 	    .map(function(ctx){ return function(){ return treatAccount(ctx);};})
 	    .reduce(Q.when, Q());
     })
+    .then(Q.nbind(connection.end, connection))
     .done();
 ;
 
@@ -30,20 +46,44 @@ function treatAccount(context){
     	.then(function(value){context.cookie=value; return context;})
 	.then(httpRequest(getCubeStatus))
         .then(function(value){context.status=value; return context;})
+	.then(logCube)
+    ;
+    
+	/*
 	.then(formatCubeStatus)
 	.then(function(formatted){ return formatted.split('\n');})
-	.then(function(strings){
+	 .then(function(strings){
 	    return strings
 		.map(function(s){
 		    return function(){
-			return Q(s).tap(console.log).then(httpRequest(logCubeRoom)).delay(replyDelay);
+			return Q(s).tap(console.log)
+			//.then(httpRequest(logCubeRoom))
+			;
 		    };
 		}
 		    )
 		.reduce(Q.when, Q());
 	})
-    ;
+    ;*/
 } 
+
+function logCube(context){
+    context.unixTimestamp= Date.now();
+    return context.status.rooms.map(function(room){
+	return Q({
+	    sql: 'insert into data set ?',
+	    values:{logTime:context.unixTimeStamp,
+		    apt:context.account.apt,
+		    serialNumber:context.status.serialNumber,
+		    roomName:room.name,
+		    comfortTemperature:room.comfortTemperature,
+		    actualTemperature:room.actualTemperature
+		   }
+	})
+	    .then(query)
+	;
+    }).reduce(Q.when, Q());
+};    
 
 function formatCubeStatus(context){
     var unixTimestamp= Date.now();
